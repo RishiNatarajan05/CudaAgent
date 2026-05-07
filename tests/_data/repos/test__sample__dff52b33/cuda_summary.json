@@ -1,0 +1,25 @@
+{
+  "repo_id": "test__sample__dff52b33",
+  "url": "https://github.com/test/sample",
+  "src_path": "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src",
+  "total_kernels": 3,
+  "total_device_functions": 1,
+  "total_kernel_launches": 1,
+  "languages_detected": [
+    "CUDA"
+  ],
+  "cuda_api_calls": {
+    "cudaMemcpy": 1,
+    "cudaMemcpyHostToDevice": 1
+  },
+  "files_with_issues": [
+    "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src/sample.cu"
+  ],
+  "total_issues_by_severity": {
+    "critical": 4,
+    "warning": 2,
+    "info": 1
+  },
+  "chunk_count": 5,
+  "elapsed_seconds": 26.28
+}

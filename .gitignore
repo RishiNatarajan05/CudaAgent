@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+data/chroma/
+data/repos/
+data/cuda_docs/
+node_modules/
+.next/
+dist/
+.DS_Store

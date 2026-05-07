@@ -1,0 +1,134 @@
+[
+  {
+    "chunk_id": "sample.cu::kernel::bad_kernel::9",
+    "chunk_type": "kernel",
+    "name": "bad_kernel",
+    "filepath": "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src/sample.cu",
+    "rel_path": "sample.cu",
+    "start_line": 9,
+    "end_line": 17,
+    "text": "// Minimal CUDA file with intentional anti-patterns for testing.\n#include <cuda_runtime.h>\n\n#define BLOCK 256\n\n__device__ float relu(float x) { return x > 0.f ? x : 0.f; }\n\n// Bad: warp divergence + uncoalesced AoS-like strided write + missing __restrict__\n__global__ void bad_kernel(float* a, float* b, float* c, int n) {\n    int i = blockIdx.x * blockDim.x + threadIdx.x;\n    if (threadIdx.x % 2 == 0) {  // warp divergence\n        c[i * 32] = a[i] + b[i];  // strided store\n    } else {\n        c[i * 32] = a[i] - b[i];\n    }\n}",
+    "metadata": {
+      "parameters": [
+        "float* a",
+        "float* b",
+        "float* c",
+        "int n"
+      ],
+      "launch_bounds": null,
+      "uses_shared_memory": false,
+      "shared_memory_declarations": [],
+      "syncthreads_count": 0,
+      "has_atomic_ops": false,
+      "estimated_register_pressure": "low",
+      "detected_patterns": [
+        "WARP_DIVERGENCE",
+        "UNCOALESCED_MEMORY",
+        "MISSING_RESTRICT"
+      ]
+    }
+  },
+  {
+    "chunk_id": "sample.cu::kernel::good_kernel::19",
+    "chunk_type": "kernel",
+    "name": "good_kernel",
+    "filepath": "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src/sample.cu",
+    "rel_path": "sample.cu",
+    "start_line": 19,
+    "end_line": 25,
+    "text": "__global__ void bad_kernel(float* a, float* b, float* c, int n) {\n    int i = blockIdx.x * blockDim.x + threadIdx.x;\n    if (threadIdx.x % 2 == 0) {  // warp divergence\n        c[i * 32] = a[i] + b[i];  // strided store\n    } else {\n        c[i * 32] = a[i] - b[i];\n    }\n}\n\n// Good: coalesced, restrict-qualified\n__global__ void good_kernel(const float* __restrict__ a,\n                            const float* __restrict__ b,\n                            float* __restrict__ c, int n) {\n    int i = blockIdx.x * blockDim.x + threadIdx.x;\n    if (i < n) c[i] = relu(a[i] + b[i]);\n}",
+    "metadata": {
+      "parameters": [
+        "const float* __restrict__ a",
+        "const float* __restrict__ b",
+        "float* __restrict__ c",
+        "int n"
+      ],
+      "launch_bounds": null,
+      "uses_shared_memory": false,
+      "shared_memory_declarations": [],
+      "syncthreads_count": 0,
+      "has_atomic_ops": false,
+      "estimated_register_pressure": "low",
+      "detected_patterns": []
+    }
+  },
+  {
+    "chunk_id": "sample.cu::kernel::tiled_matmul::27",
+    "chunk_type": "kernel",
+    "name": "tiled_matmul",
+    "filepath": "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src/sample.cu",
+    "rel_path": "sample.cu",
+    "start_line": 27,
+    "end_line": 46,
+    "text": "\n// Good: coalesced, restrict-qualified\n__global__ void good_kernel(const float* __restrict__ a,\n                            const float* __restrict__ b,\n                            float* __restrict__ c, int n) {\n    int i = blockIdx.x * blockDim.x + threadIdx.x;\n    if (i < n) c[i] = relu(a[i] + b[i]);\n}\n\n// Tiled matmul-ish kernel \u2014 uses shared memory and syncthreads\n__global__ void tiled_matmul(const float* __restrict__ A,\n                             const float* __restrict__ B,\n                             float* __restrict__ C, int N) {\n    __shared__ float As[32][32];  // unpadded \u2014 bank conflict on column access\n    __shared__ float Bs[32][32];\n    int row = blockIdx.y * 32 + threadIdx.y;\n    int col = blockIdx.x * 32 + threadIdx.x;\n    float acc = 0.f;\n    for (int k = 0; k < 32; k++) {\n        As[threadIdx.y][threadIdx.x] = A[row * N + k];\n        Bs[threadIdx.y][threadIdx.x] = B[k * N + col];\n        __syncthreads();\n        for (int kk = 0; kk < 32; kk++) {\n            acc += As[threadIdx.y][kk] * Bs[kk][threadIdx.x];\n        }\n        __syncthreads();\n    }\n    C[row * N + col] = acc;\n}",
+    "metadata": {
+      "parameters": [
+        "const float* __restrict__ A",
+        "const float* __restrict__ B",
+        "float* __restrict__ C",
+        "int N"
+      ],
+      "launch_bounds": null,
+      "uses_shared_memory": true,
+      "shared_memory_declarations": [
+        "__shared__ float As[32][32];",
+        "__shared__ float Bs[32][32];"
+      ],
+      "syncthreads_count": 2,
+      "has_atomic_ops": false,
+      "estimated_register_pressure": "low",
+      "detected_patterns": [
+        "UNCOALESCED_MEMORY",
+        "SHARED_MEMORY_BANK_CONFLICT"
+      ]
+    }
+  },
+  {
+    "chunk_id": "sample.cu::device::relu::6",
+    "chunk_type": "device_func",
+    "name": "relu",
+    "filepath": "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src/sample.cu",
+    "rel_path": "sample.cu",
+    "start_line": 6,
+    "end_line": 7,
+    "text": "// Minimal CUDA file with intentional anti-patterns for testing.\n#include <cuda_runtime.h>\n\n#define BLOCK 256\n\n__device__ float relu(float x) { return x > 0.f ? x : 0.f; }",
+    "metadata": {
+      "parameters": [
+        "float x"
+      ],
+      "called_by": [
+        "good_kernel"
+      ]
+    }
+  },
+  {
+    "chunk_id": "sample.cu::host::bad_host::48",
+    "chunk_type": "host_func",
+    "name": "bad_host",
+    "filepath": "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src/sample.cu",
+    "rel_path": "sample.cu",
+    "start_line": 48,
+    "end_line": 54,
+    "text": "void bad_host(float* h, float* d, int N) {\n    for (int i = 0; i < N; i++) {\n        cudaMemcpy(d, h + i, sizeof(float), cudaMemcpyHostToDevice);\n        good_kernel<<<1, BLOCK>>>(d, d, d, 1);\n    }\n}",
+    "metadata": {
+      "contains_kernel_launches": true,
+      "kernel_launches": [
+        {
+          "kernel_name": "good_kernel",
+          "grid_dim": "1",
+          "block_dim": "BLOCK",
+          "shared_mem_bytes": "0",
+          "stream": "0",
+          "source_line": 51
+        }
+      ],
+      "cuda_api_calls": [
+        "cudaMemcpy",
+        "cudaMemcpyHostToDevice"
+      ],
+      "has_loop_with_memcpy": true,
+      "has_loop_with_kernel_launch": true
+    }
+  }
+]

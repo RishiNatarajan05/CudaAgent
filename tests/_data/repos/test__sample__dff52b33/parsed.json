@@ -1,0 +1,133 @@
+[
+  {
+    "filepath": "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src/sample.cu",
+    "is_cuda": true,
+    "includes": [
+      "cuda_runtime.h"
+    ],
+    "defines": [
+      "BLOCK"
+    ],
+    "kernels": [
+      {
+        "name": "bad_kernel",
+        "parameters": [
+          "float* a",
+          "float* b",
+          "float* c",
+          "int n"
+        ],
+        "return_type": "void",
+        "launch_bounds": null,
+        "uses_shared_memory": false,
+        "shared_memory_declarations": [],
+        "syncthreads_count": 0,
+        "has_atomic_ops": false,
+        "estimated_register_pressure": "low",
+        "body": "__global__ void bad_kernel(float* a, float* b, float* c, int n) {\n    int i = blockIdx.x * blockDim.x + threadIdx.x;\n    if (threadIdx.x % 2 == 0) {  // warp divergence\n        c[i * 32] = a[i] + b[i];  // strided store\n    } else {\n        c[i * 32] = a[i] - b[i];\n    }\n}",
+        "start_line": 9,
+        "end_line": 17,
+        "filepath": "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src/sample.cu",
+        "detected_patterns": [
+          "WARP_DIVERGENCE",
+          "UNCOALESCED_MEMORY",
+          "MISSING_RESTRICT"
+        ]
+      },
+      {
+        "name": "good_kernel",
+        "parameters": [
+          "const float* __restrict__ a",
+          "const float* __restrict__ b",
+          "float* __restrict__ c",
+          "int n"
+        ],
+        "return_type": "void",
+        "launch_bounds": null,
+        "uses_shared_memory": false,
+        "shared_memory_declarations": [],
+        "syncthreads_count": 0,
+        "has_atomic_ops": false,
+        "estimated_register_pressure": "low",
+        "body": "__global__ void good_kernel(const float* __restrict__ a,\n                            const float* __restrict__ b,\n                            float* __restrict__ c, int n) {\n    int i = blockIdx.x * blockDim.x + threadIdx.x;\n    if (i < n) c[i] = relu(a[i] + b[i]);\n}",
+        "start_line": 19,
+        "end_line": 25,
+        "filepath": "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src/sample.cu",
+        "detected_patterns": []
+      },
+      {
+        "name": "tiled_matmul",
+        "parameters": [
+          "const float* __restrict__ A",
+          "const float* __restrict__ B",
+          "float* __restrict__ C",
+          "int N"
+        ],
+        "return_type": "void",
+        "launch_bounds": null,
+        "uses_shared_memory": true,
+        "shared_memory_declarations": [
+          "__shared__ float As[32][32];",
+          "__shared__ float Bs[32][32];"
+        ],
+        "syncthreads_count": 2,
+        "has_atomic_ops": false,
+        "estimated_register_pressure": "low",
+        "body": "__global__ void tiled_matmul(const float* __restrict__ A,\n                             const float* __restrict__ B,\n                             float* __restrict__ C, int N) {\n    __shared__ float As[32][32];  // unpadded \u2014 bank conflict on column access\n    __shared__ float Bs[32][32];\n    int row = blockIdx.y * 32 + threadIdx.y;\n    int col = blockIdx.x * 32 + threadIdx.x;\n    float acc = 0.f;\n    for (int k = 0; k < 32; k++) {\n        As[threadIdx.y][threadIdx.x] = A[row * N + k];\n        Bs[threadIdx.y][threadIdx.x] = B[k * N + col];\n        __syncthreads();\n        for (int kk = 0; kk < 32; kk++) {\n            acc += As[threadIdx.y][kk] * Bs[kk][threadIdx.x];\n        }\n        __syncthreads();\n    }\n    C[row * N + col] = acc;\n}",
+        "start_line": 27,
+        "end_line": 46,
+        "filepath": "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src/sample.cu",
+        "detected_patterns": [
+          "UNCOALESCED_MEMORY",
+          "SHARED_MEMORY_BANK_CONFLICT"
+        ]
+      }
+    ],
+    "device_functions": [
+      {
+        "name": "relu",
+        "parameters": [
+          "float x"
+        ],
+        "body": "__device__ float relu(float x) { return x > 0.f ? x : 0.f; }",
+        "start_line": 6,
+        "end_line": 7,
+        "filepath": "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src/sample.cu",
+        "called_by": [
+          "good_kernel"
+        ]
+      }
+    ],
+    "host_functions": [
+      {
+        "name": "bad_host",
+        "body": "void bad_host(float* h, float* d, int N) {\n    for (int i = 0; i < N; i++) {\n        cudaMemcpy(d, h + i, sizeof(float), cudaMemcpyHostToDevice);\n        good_kernel<<<1, BLOCK>>>(d, d, d, 1);\n    }\n}",
+        "contains_kernel_launches": true,
+        "kernel_launches": [
+          {
+            "kernel_name": "good_kernel",
+            "grid_dim": "1",
+            "block_dim": "BLOCK",
+            "shared_mem_bytes": "0",
+            "stream": "0",
+            "source_line": 51
+          }
+        ],
+        "cuda_api_calls": [
+          "cudaMemcpy",
+          "cudaMemcpyHostToDevice"
+        ],
+        "has_loop_with_memcpy": true,
+        "has_loop_with_kernel_launch": true,
+        "start_line": 48,
+        "end_line": 54,
+        "filepath": "/Users/rishinatarajan/CudaProject/cuda-agent/tests/_data/repos/test__sample__dff52b33/src/sample.cu"
+      }
+    ],
+    "cuda_api_calls": [
+      "cudaMemcpy",
+      "cudaMemcpyHostToDevice"
+    ],
+    "parse_error": null
+  }
+]
