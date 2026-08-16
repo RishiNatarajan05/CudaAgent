@@ -1,12 +1,27 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useChat } from "@/hooks/useChat";
 import { MessageBubble } from "./MessageBubble";
 import { AgentSteps } from "./AgentSteps";
 
-export function ChatWindow({ repoId, onResult }: { repoId: string; onResult: (r: { roofline: any; issues: any[]; sources: any[] }) => void }) {
+interface SideData {
+  roofline: any;
+  issues: any[];
+  sources: any[];
+}
+
+export function ChatWindow({
+  repoId,
+  onResult,
+  seedPrompt,
+}: {
+  repoId: string;
+  onResult: (r: SideData) => void;
+  seedPrompt?: string | null;
+}) {
   const { messages, send, busy, steps, roofline, issues } = useChat(repoId);
   const [input, setInput] = useState("");
+  const lastSyncRef = useRef<string>("");
 
   const submit = () => {
     if (!input.trim() || busy) return;
@@ -14,12 +29,24 @@ export function ChatWindow({ repoId, onResult }: { repoId: string; onResult: (r:
     setInput("");
   };
 
-  // Bubble side data up to parent for the right panel
-  if (typeof window !== "undefined") {
-    (window as any).__cudaAgent = { roofline, issues };
-  }
-  // Pass via callback (without infinite loop): only when changed snapshot
-  // Simpler approach: parent listens via prop and we pass on every render — child controls.
+  // If a seed prompt comes in from the sidebar, pre-fill the textarea
+  useEffect(() => {
+    if (seedPrompt) setInput(seedPrompt);
+  }, [seedPrompt]);
+
+  // Sync side-panel state to parent ONLY when it actually changes.
+  const sources = messages.at(-1)?.sources || [];
+  useEffect(() => {
+    const sig = JSON.stringify({
+      r: roofline ? roofline.estimated_ai : null,
+      i: issues.length,
+      s: sources.length,
+    });
+    if (sig === lastSyncRef.current) return;
+    lastSyncRef.current = sig;
+    onResult({ roofline, issues, sources });
+  }, [roofline, issues, sources, onResult]);
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-auto space-y-3 p-4">
@@ -33,9 +60,9 @@ export function ChatWindow({ repoId, onResult }: { repoId: string; onResult: (r:
           <div className="text-zinc-500 text-sm space-y-2">
             <div>Try one of:</div>
             <ul className="list-disc list-inside">
-              <li>"List all kernels in this repo and flag the worst issues."</li>
-              <li>"Analyze the matrixMul kernel — is it memory or compute bound?"</li>
+              <li>"Analyze the MatrixMulNaive kernel."</li>
               <li>"Which kernel has the most warp divergence risk?"</li>
+              <li>"Compare MatrixMulNaive vs MatrixMulAsyncCopyMultiStageSharedState."</li>
               <li>"Explain how the reduction kernel uses shared memory."</li>
             </ul>
           </div>
@@ -65,15 +92,6 @@ export function ChatWindow({ repoId, onResult }: { repoId: string; onResult: (r:
           </button>
         </div>
       </div>
-      <ChildSync roofline={roofline} issues={issues} sources={messages.at(-1)?.sources || []} onResult={onResult} />
     </div>
   );
-}
-
-function ChildSync({ roofline, issues, sources, onResult }: any) {
-  // Effectful sync to parent without per-render call
-  if (typeof window !== "undefined") {
-    queueMicrotask(() => onResult({ roofline, issues, sources }));
-  }
-  return null;
 }

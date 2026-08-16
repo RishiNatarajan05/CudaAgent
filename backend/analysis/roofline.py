@@ -93,7 +93,6 @@ def estimate_roofline(kernel) -> RooflineEstimate:
             bytes_total += 8 if ident in double_ptrs else 4
         elif ident in shared_arrays:
             accesses_shared += 1
-        # local arrays / unknowns — skip
 
     bytes_total *= loop_mult
 
